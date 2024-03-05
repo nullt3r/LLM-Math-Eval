@@ -2,12 +2,13 @@ from openai import OpenAI
 import re
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.style as style
 
 # Configuration for the OpenAI client
 client = OpenAI(base_url="http://192.168.1.223:1234/v1", api_key="not-needed")
 
 
-def generate_questions(operation, num_questions, max_value=100000):
+def generate_questions(operation, num_questions, max_value=10 00 000):
     questions = []
     for _ in range(num_questions):
         # Generate two random numbers based on the operation
@@ -32,14 +33,14 @@ def generate_questions(operation, num_questions, max_value=100000):
     return questions
 
 
-def ask_question(question):
+def ask_question(question, temperature):
     completion = client.chat.completions.create(
         model="local-model",
         messages=[
             {"role": "system", "content": "You are a Super Computer Math calculator. Return only the result with three decimal places maximum. No other text is allowed."},
             {"role": "user", "content": question},
         ],
-        temperature=1.2,
+        temperature=temperature,
         max_tokens=12
     )
     answer = completion.choices[0].message.content.strip()
@@ -72,49 +73,46 @@ def calculate_correct_answer(operation, num1, num2):
 
 operations = ['+', '-', '*', '/']
 num_questions_per_operation = 50
-operation_accuracies = {op: [] for op in operations}
-low_accuracy_threshold = 0.8
-low_accuracy_counts = {op: 0 for op in operations}
+temperature_steps = np.arange(0.0, 2.2, 0.2) # From 0.6 to 2.0 in steps of 0.2
+temperature_results = {temp: {op: [] for op in operations} for temp in temperature_steps}
 
-for operation in operations:
-    questions = generate_questions(operation, num_questions_per_operation)
-    for question, num1, num2 in questions:
-        correct_answer = calculate_correct_answer(operation, num1, num2)
-        model_answer = ask_question(question)
-        accuracy = calculate_accuracy(correct_answer, model_answer)
-        operation_accuracies[operation].append(accuracy)
-        if accuracy < low_accuracy_threshold:
-            low_accuracy_counts[operation] += 1
+for temperature in temperature_steps:
+    operation_accuracies = {op: [] for op in operations}
+    low_accuracy_counts = {op: 0 for op in operations}
 
-        # Logging the results
-        print(f"Question: {question} | Expected: {correct_answer:.3f}, Model: {model_answer:.3f} | Accuracy: {accuracy * 100:.2f}%")
+    for operation in operations:
+        questions = generate_questions(operation, num_questions_per_operation)
+        for question, num1, num2 in questions:
+            correct_answer = calculate_correct_answer(operation, num1, num2)
+            model_answer = ask_question(question, temperature)
+            accuracy = calculate_accuracy(correct_answer, model_answer)
+            operation_accuracies[operation].append(accuracy)
+            if accuracy < 0.8:
+                low_accuracy_counts[operation] += 1
+            print(f"Question: {question} | Expected: {correct_answer:.3f}, Model: {model_answer:.3f} | Temperature: {temperature:.3f} | Accuracy: {accuracy * 100:.2f}%")
 
-# Rest of the plotting code remains unchanged
+    for op in operations:
+        avg_acc = np.mean(operation_accuracies[op])
+        low_acc_percentage = low_accuracy_counts[op] / num_questions_per_operation
+        temperature_results[temperature][op] = (avg_acc, low_acc_percentage)
 
-# Calculating average accuracy and low accuracy percentage
-avg_accuracies = {op: np.mean(accuracies) for op, accuracies in operation_accuracies.items()}
-low_accuracy_percentage = {op: count / num_questions_per_operation for op, count in low_accuracy_counts.items()}
+# Plotting the results for each operation across temperatures
+style.use('dark_background')
+fig, axs = plt.subplots(2, 2, figsize=(12, 10))  # Grid of 2x2 for four operations
 
-# Plotting the average accuracy per operation with low accuracy highlighted
-bar_width = 0.4
-indices = np.arange(len(avg_accuracies))
+for i, operation in enumerate(operations):
+    # Convert proportions to percentages
+    avg_accuracies = [temperature_results[temp][operation][0] * 100 for temp in temperature_steps]
+    low_accuracies = [temperature_results[temp][operation][1] * 100 for temp in temperature_steps]
 
-plt.bar(indices, list(avg_accuracies.values()), bar_width, align='center', alpha=0.7, color="grey", label='Average Accuracy')
-plt.bar(indices, list(low_accuracy_percentage.values()), bar_width, align='center', alpha=0.7, color='red', label='Low Accuracy (<80%)')
+    ax = axs[i//2, i%2]
+    ax.plot(temperature_steps, avg_accuracies, label='Average Accuracy', marker='o', color="#7509E6")
+    ax.plot(temperature_steps, low_accuracies, label='Low Accuracy (<80%)', marker='x', color='#F44336')
+    ax.set_title(f'Operation: {operation}')
+    ax.set_xlabel('Temperature')
+    ax.set_ylabel('Accuracy (Percentage)')
+    ax.legend()
+    ax.grid(True, color='gray', linestyle='--', linewidth=0.5, alpha=0.7)
 
-plt.xticks(indices, list(avg_accuracies.keys()))
-plt.xlabel('Operation')
-plt.ylabel('Accuracy (0.0-1.0)')
-plt.title('Average Accuracy per Operation with Low Accuracy Highlight')
-
-# Adding average accuracy as text on bars
-for i, (op, accuracy) in enumerate(avg_accuracies.items()):
-    plt.text(i, accuracy, f"{accuracy * 100:.0f}%", ha='center', va='bottom')
-
-# Adding low accuracy percentage as text on red bars
-for i, (op, low_acc) in enumerate(low_accuracy_percentage.items()):
-    if low_acc > 0:  # Only display if there's a notable low accuracy
-        plt.text(i, low_acc, f"{low_acc * 100:.0f}%", ha='center', va='bottom', color='black')
-
-plt.legend()
+plt.tight_layout()
 plt.show()
