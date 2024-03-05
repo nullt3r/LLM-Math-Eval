@@ -8,7 +8,7 @@ import matplotlib.style as style
 client = OpenAI(base_url="http://192.168.1.223:1234/v1", api_key="not-needed")
 
 
-def generate_questions(operation, num_questions, max_value=10 00 000):
+def generate_questions(operation, num_questions, max_value=1000000):
     questions = []
     for _ in range(num_questions):
         # Generate two random numbers based on the operation
